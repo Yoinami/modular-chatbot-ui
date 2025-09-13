@@ -196,45 +196,79 @@ export default function ChatPage() {
   };
 
   // --- mock Gemini classification fetcher ---
-  // const classifyQuestion = async (question: string): Promise<string> => {
-  //   // Mock API call to Gemini (replace with real later)
-  //   // This is just a fake classifier to simulate Gemini response
-  //   return new Promise((resolve) => {
-  //     setTimeout(() => {
-  //       if (question.includes("scan")) resolve("analyze");
-  //       else if (question.includes("quiz")) resolve("quiz");
-  //       else resolve("general");
-  //     }, 300); // simulate network delay
-  //   });
-  // };
+  const classifyQuestion = async (question: string): Promise<string> => {
+    const text = question.toLowerCase().trim();
 
-  const classifyQuestion = async (input: string): Promise<string> => {
-    try {
-      setDecidingType(true);
-      console.log("Classifying question:", input);
-      const token = getToken();
-      const response = await fetch(`${API_URL}/decisions/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify({ question: input }),
-      });
+    // Expanded keyword sets
+    const keywords = {
+      analyze: [
+        "scan",
+        "analyze",
+        "analyse",
+        "inspect",
+        "check",
+        "evaluate",
+        "detect",
+        "review",
+        "examine",
+        "diagnose",
+      ],
+      general: [
+        "general",
+        "chat",
+        "talk",
+        "discuss",
+        "help",
+        "support",
+        "explain",
+        "guide",
+      ],
+      quiz: ["quiz", "test", "questionnaire", "exam", "practice", "assessment"],
+    };
 
-      if (!response.ok) {
-        throw new Error(`Error fetching decisions: ${response.statusText}`);
-      }
+    const matchType = (type: string): boolean => {
+      return keywords[type as keyof typeof keywords].some((word) =>
+        new RegExp(`\\b${word}\\b`, "i").test(text)
+      );
+    };
 
-      const data = await response.json();
-      return data.decision_status === "scan" ? "analyze" : "general";
-    } catch (error) {
-      console.error("Error in classifyQuestion:", error);
-      throw error;
-    } finally {
-      setDecidingType(false);
-    }
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (matchType("analyze")) return resolve("analyze");
+        if (matchType("quiz")) return resolve("quiz");
+        if (matchType("general")) return resolve("general");
+        resolve("general"); // Default fallback
+      }, 200); // Slightly faster
+    });
   };
+
+  // const classifyQuestion = async (input: string): Promise<string> => {
+  //   try {
+  //     setDecidingType(true);
+  //     console.log("Classifying question:", input);
+  //     const token = getToken();
+  //     const response = await fetch(`${API_URL}/decisions/`, {
+  //       method: "POST",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         Authorization: token ? `Bearer ${token}` : "",
+  //       },
+  //       body: JSON.stringify({ question: input }),
+  //     });
+
+  //     if (!response.ok) {
+  //       throw new Error(`Error fetching decisions: ${response.statusText}`);
+  //     }
+
+  //     const data = await response.json();
+  //     return data.decision_status === "scan" ? "analyze" : "general";
+  //   } catch (error) {
+  //     console.error("Error in classifyQuestion:", error);
+  //     throw error;
+  //   } finally {
+  //     setDecidingType(false);
+  //   }
+  // };
 
   // --- Step 2: call API depending on type ---
   const callApiByType = async (
@@ -290,7 +324,7 @@ export default function ChatPage() {
       const { signal } = controller;
 
       const url = extractUrlFromMessage(input);
-      console.log('url to scan:', url);
+      console.log("url to scan:", url);
 
       const responsePromise =
         type === "analyze"
@@ -877,7 +911,9 @@ export default function ChatPage() {
               >
                 Cancel
               </Button>
-              <Button className="mb-2 md:mb-0" onClick={handleConfirmLogin}>Go to Login</Button>
+              <Button className="mb-2 md:mb-0" onClick={handleConfirmLogin}>
+                Go to Login
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
