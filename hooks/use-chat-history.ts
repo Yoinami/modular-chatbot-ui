@@ -19,16 +19,26 @@ export const useChatHistory = () => {
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL;
       const token = getToken();
-      const res = await fetch(`${API_URL}/conversations/get`, {
-        method: "POST",
+      const res = await fetch(`${API_URL}/session/default/memory`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          // Authorization: `Bearer ${token}`,
         },
       });
 
-      const data: ChatConversation[] = await res.json();
-      setConversations(data || []);
+      const data = await res.json();
+      
+      // Transform turns into ChatConversation format
+      const history: ChatConversation[] = (data.turns || []).map((turn: any, index: number) => ({
+        user_id: 0,
+        title: turn.question.slice(0, 30) + (turn.question.length > 30 ? "..." : ""),
+        id: `${data.session_id}-${index}`,
+        created_at: turn.timestamp,
+        updated_at: turn.timestamp,
+      })).reverse(); // Most recent first
+
+      setConversations(history);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Failed to fetch chat history");

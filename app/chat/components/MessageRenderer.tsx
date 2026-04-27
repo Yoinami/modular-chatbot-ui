@@ -35,14 +35,10 @@ export default function MessageRenderer({ message, isRendering }: { message: Mes
     return null;
   };
 
-  const scanResult = message.type === "analyze" && !message.scanResults ? parseScanResult(message.content) : null;
-
   // console.log('Parsed scan result:', scanResult);
   
   return (
     <div>
-
-      {message.type === "file" && <FileScanResult analysisResult={message.fileAnalysis} />}
 
       {message.type !== "analyze" &&
       <ChatMessage message={message} isRendering={isRendering} />
@@ -51,23 +47,6 @@ export default function MessageRenderer({ message, isRendering }: { message: Mes
       {message.type === "analyze" && scanResult?.error &&
       <ChatMessage message={{ ...message, content: scanResult.error }} isRendering={isRendering} />
       }
-
-      {message.isScanning && (
-      <ProgressBar message={message} />
-      )}
-
-      {message.scanResults && (
-      <div className="ml-11 mt-2">
-        {/* <ScanResults results={message.scanResults} /> */}
-        <ScanResult data={message.scanResults} />
-      </div>
-      )}
-
-      {scanResult && !scanResult.error && (
-      <div className="ml-11 mt-2">
-        <ScanResult data={scanResult} />
-      </div>
-      )}
       
     </div>
   );

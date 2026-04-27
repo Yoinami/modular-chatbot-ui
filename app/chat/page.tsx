@@ -53,7 +53,7 @@ export default function ChatPage() {
 
   const prevUserRef = useRef(false);
 
-  useEffect(() => {
+  /* useEffect(() => {
     // Only show modal if loading finished and there was no previous user
     if (!userLoading && !user && prevUserRef.current === null) {
       setShowLoginModal(true);
@@ -63,7 +63,7 @@ export default function ChatPage() {
 
     // Update previous user
     prevUserRef.current = user;
-  }, [user, userLoading]);
+  }, [user, userLoading]); */
 
   const handleConfirmLogin = () => {
     setShowLoginModal(false);
@@ -99,9 +99,6 @@ export default function ChatPage() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputContainerRef = useRef<HTMLDivElement>(null);
-  const [urlToScan, setUrlToScan] = useState("");
-  const [isUrlScanning, setIsUrlScanning] = useState(false);
-  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isUserAtBottom, setIsUserAtBottom] = useState(true);
@@ -140,196 +137,79 @@ export default function ChatPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const extractUrlFromMessage = (message: string): string | null => {
-    const urlRegex = /(https?:\/\/[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})/g;
-    const match = message.match(urlRegex);
-
-    if (!match) return null;
-
-    let url = match[0].trim();
-
-    // If already has protocol, return as is
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      return url;
+  
+  // Sync session messages with memory turns if needed
+  useEffect(() => {
+    const fetchMemory = async () => {
+      try {
+        const res = await fetch(`${API_URL}/session/default/memory`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" }
+        });
+        const data = await res.json();
+        if (data.turns) {
+          const transformed = data.turns.flatMap((turn: any) => [
+            {
+              id: `q-${turn.timestamp}`,
+              role: "user",
+              content: turn.question,
+              datetime: turn.timestamp
+            },
+            {
+              id: `a-${turn.timestamp}`,
+              role: "assistant",
+              content: turn.answer,
+              datetime: turn.timestamp
+            }
+          ]);
+          setMessages(transformed);
+        }
+      } catch (e) {
+        console.error("Failed to sync memory:", e);
+      }
+    };
+    
+    if (!selectedChatId) {
+      fetchMemory();
     }
+  }, [selectedChatId, API_URL, setMessages]);
 
-    // Otherwise, prepend http://
-    return `http://${url}`;
-  };
-
-  // --- Mock scan fetcher ---
-  const mockScanFetcher = async (urlToScan: string): Promise<Response> => {
-    const fakeScanResult = {
-      scanned_output: {
-        privacy_risk: {
-          header: "Privacy Risk Assessment",
-          body: "Based on the VirusTotal scan, the file appears to pose minimal privacy risks...",
-        },
-        security: {
-          header: "Security Assessment",
-          body: "The VirusTotal scan indicates a low security risk...",
-        },
-        data_sharing: {
-          header: "Data Sharing Implications",
-          body: "The VirusTotal results suggest minimal overt data sharing concerns...",
-        },
-        overall: {
-          malicious: "0 vendors identified the file as malicious.",
-          suspicious: "0 vendors identified the file as suspicious.",
-          harmless: "66 vendors identified the file as harmless.",
-          undetected:
-            "31 vendors did not detect the file. This does not indicate safety or threat.",
-          timeout: "0 vendors timed out during analysis.",
-        },
-        flagged_vendors: [],
-      },
-      type: "analyze",
-      conversation_id: Date.now(),
-      title: `WAIPayloadScan for ${urlToScan}`,
-    };
-
-    // Return a Response object so createChat can call response.json()
-    return new Response(JSON.stringify(fakeScanResult), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
-  };
-
-  // --- mock Gemini classification fetcher ---
+  // --- mock classification fetcher ---
   const classifyQuestion = async (question: string): Promise<string> => {
-    const text = question.toLowerCase().trim();
-
-    // Expanded keyword sets
-    const keywords = {
-      analyze: [
-        "scan",
-        "analyze",
-        "analyse",
-        "inspect",
-        "check",
-        "evaluate",
-        "detect",
-        "review",
-        "examine",
-        "diagnose",
-      ],
-      general: [
-        "general",
-        "chat",
-        "talk",
-        "discuss",
-        "help",
-        "support",
-        "explain",
-        "guide",
-      ],
-      quiz: ["quiz", "test", "questionnaire", "exam", "practice", "assessment"],
-    };
-
-    const matchType = (type: string): boolean => {
-      return keywords[type as keyof typeof keywords].some((word) =>
-        new RegExp(`\\b${word}\\b`, "i").test(text)
-      );
-    };
-
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (matchType("analyze")) return resolve("analyze");
-        if (matchType("quiz")) return resolve("quiz");
-        if (matchType("general")) return resolve("general");
-        resolve("general"); // Default fallback
-      }, 200); // Slightly faster
-    });
+    return "general";
   };
 
-  // const classifyQuestion = async (input: string): Promise<string> => {
-  //   try {
-  //     setDecidingType(true);
-  //     console.log("Classifying question:", input);
-  //     const token = getToken();
-  //     const response = await fetch(`${API_URL}/decisions/`, {
-  //       method: "POST",
-  //       headers: {
-  //         "Content-Type": "application/json",
-  //         Authorization: token ? `Bearer ${token}` : "",
-  //       },
-  //       body: JSON.stringify({ question: input }),
-  //     });
-
-  //     if (!response.ok) {
-  //       throw new Error(`Error fetching decisions: ${response.statusText}`);
-  //     }
-
-  //     const data = await response.json();
-  //     return data.decision_status === "scan" ? "analyze" : "general";
-  //   } catch (error) {
-  //     console.error("Error in classifyQuestion:", error);
-  //     throw error;
-  //   } finally {
-  //     setDecidingType(false);
-  //   }
-  // };
-
-  // --- Step 2: call API depending on type ---
+  // --- Step 2: call API ---
   const callApiByType = async (
     type: string,
     question: string | null,
     token: string | null,
-    signal: AbortSignal,
-    setMessages?: React.Dispatch<React.SetStateAction<MessageType[]>> // so we can push scan messages
+    signal: AbortSignal
   ): Promise<Response> => {
-    // if (type === "analyze") {
-    //   return mockScanFetcher(question); // ✅ just return JSON
-    // }
-    console.log(type);
-    let endpoint = "";
-
-    switch (type) {
-      case "general":
-        endpoint = `${API_URL}/chat/new`;
-        break;
-      case "analyze":
-        endpoint = `${API_URL}/analyze/new`;
-        break;
-      case "quiz":
-        endpoint = `${API_URL}/quiz/generate`;
-      // ---- mock scan fetch ----
-      default:
-        endpoint = `${API_URL}/chat/new`;
-    }
-
-    return fetch(endpoint, {
+    return fetch(`${API_URL}/query`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: token ? `Bearer ${token}` : "",
       },
-      body: JSON.stringify(
-        type === "analyze" ? { url: question } : { question }
-      ),
+      body: JSON.stringify({ 
+        question,
+        session_id: conversationId || "default" 
+      }),
       signal,
     });
   };
+
   // --- Step 3: orchestrator (your createChat) ---
   const createChat = async () => {
     try {
       const token = getToken();
 
-      // classify type first
-      const type = await classifyQuestion(input);
-      console.log("Classified type:", type);
-
       // then call correct API
       const controller = new AbortController();
       const { signal } = controller;
 
-      const url = extractUrlFromMessage(input);
-      console.log("url to scan:", url);
-
-      const responsePromise =
-        type === "analyze"
-          ? callApiByType(type, url, token, signal)
-          : callApiByType(type, input, token, signal);
+      const responsePromise = callApiByType("general", input, token, signal);
 
       // Initial bot message
       let botText = "";
@@ -341,139 +221,34 @@ export default function ChatPage() {
         content: "",
         datetime: new Date(),
         status: "info",
-        ...(type === "analyze" && {
-          isScanning: true,
-          scanProgress: 0,
-          type: "analyze",
-        }),
       };
 
       setMessages((prev) => [...prev, botMessage]);
 
-      if (type === "analyze") {
-        console.log("Starting scan flow");
-        setIsUrlScanning(true);
-        let finished = false;
-        const startTime = Date.now();
-        const ESTIMATED_SCAN_TIME = 10000; // 10s baseline
-
-        // ✅ Use the existing botMessage passed from createChat
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === botMessage.id
-              ? { ...msg, isScanning: true, scanProgress: 0 }
-              : msg
-          )
-        );
-
-        // Progress updater loop
-        const progressLoop = async () => {
-          const ESTIMATED_SCAN_TIME = 25000; // 25 seconds
-          while (!finished) {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(
-              Math.floor((elapsed / ESTIMATED_SCAN_TIME) * 100),
-              95 // cap before real response
-            );
-
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === botMessage.id
-                  ? { ...msg, scanProgress: progress }
-                  : msg
-              )
-            );
-
-            await new Promise((r) => setTimeout(r, 300));
-          }
-        };
-
-        // Start progress loop
-        progressLoop();
-
-        // === Wait for API ===
-        const response = await responsePromise;
-        finished = true;
-
-        if (!response.ok) throw new Error("Scan API error");
-        const result = await response.json();
-
-        console.log("Scan result:", result);
-        let newMessage = null;
-        if (result.error) {
-          botMessage.content = result.error;
-          newMessage = {
-            ...botMessage,
-            isScanning: false,
-            scanProgress: 100,
-            scanResults: result.scanned_output ? result.scanned_output : null,
-            type: "general",
-          };
-        } else {
-          newMessage = {
-            ...botMessage,
-            isScanning: false,
-            scanProgress: 100,
-            scanResults: result.scanned_output,
-            type: "analyze",
-          };
-        }
-
-        console.log("newMessage", newMessage);
-
-        // Final update
-        setMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === botMessage.id ? { ...newMessage } : msg
-          )
-        );
-
-        // Conversation meta
-        setConversationId(result.conversation_id);
-        setSelectedChatId(result.conversation_id);
-        setChatHistory((prev) => [
-          {
-            user_id: user?.id || 0,
-            title: result.title || "New Chat",
-            id: result.conversation_id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          ...prev,
-        ]);
-
-        return; // stop here
-      }
-
       setIsTyping(true);
       setIsRendering(true);
 
-      // --- Non-scan: normal streaming flow ---
+      // --- normal flow ---
       const response = await responsePromise;
-      if (!response.body) throw new Error("No response body");
+      if (!response.ok) throw new Error("API error");
+      
+      const data = await response.json();
+      const content = data.answer || "";
+      const cleaned = content.replace("</think>", "");
+      botText = cleaned;
 
-      await readStreamingJson(
-        response,
-        (parsed) => {
-          lastChunk = parsed;
-          const content = parsed.message?.content || "";
-          const cleaned = content.replace("</think>", "");
-          botText += cleaned;
+      setIsTyping(false);
+      setIsRendering(false);
 
-          setIsTyping(false);
-
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMessage.id ? { ...msg, content: botText } : msg
-            )
-          );
-        },
-        stopRef
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMessage.id ? { ...msg, content: botText } : msg
+        )
       );
 
-      // conversation meta for non-scan types
-      const conversation_id = lastChunk?.conversation_id;
-      const conversation_title = lastChunk?.title || "New Chat";
+      // conversation meta
+      const conversation_id = data.session_id || Date.now().toString();
+      const conversation_title = input.slice(0, 30) + "...";
 
       setConversationId(conversation_id);
       setSelectedChatId(conversation_id);
@@ -493,28 +268,16 @@ export default function ChatPage() {
   };
 
   // Sends a user message in an existing conversation
-  // Sends a user message in an existing conversation
   const sendMessage = async () => {
     try {
       const token = getToken();
-
-      // --- classify first ---
-      const type = await classifyQuestion(input);
-      console.log("Classified type (sendMessage):", type);
 
       // --- controller for abort ---
       const controller = new AbortController();
       const { signal } = controller;
 
       // --- choose correct API ---
-      let endpoint = "";
-      if (type === "general") {
-        endpoint = `${API_URL}/chat/conversation/${conversationId}`;
-      } else if (type === "analyze") {
-        endpoint = `${API_URL}/analyze/conversation/${conversationId}`;
-      } else {
-        endpoint = `${API_URL}/chat/conversation/${conversationId}`;
-      }
+      let endpoint = `${API_URL}/query`;
 
       // --- initial bot message ---
       let botText = "";
@@ -526,109 +289,10 @@ export default function ChatPage() {
         content: "",
         datetime: new Date(),
         status: "info",
-        ...(type === "analyze" && {
-          isScanning: true,
-          scanProgress: 0,
-          type: "analyze",
-        }),
       };
 
       setMessages((prev) => [...prev, botMessage]);
 
-      // ===================
-      // 🔍 HANDLE ANALYZE
-      // ===================
-      if (type === "analyze") {
-        console.log("Starting scan flow (sendMessage)");
-        setIsUrlScanning(true);
-        let finished = false;
-        const startTime = Date.now();
-        const ESTIMATED_SCAN_TIME = 10000; // 10s baseline
-
-        // progress updater loop
-        const progressLoop = async () => {
-          const ESTIMATED_SCAN_TIME = 25000; // 25 seconds
-          while (!finished) {
-            const elapsed = Date.now() - startTime;
-            const progress = Math.min(
-              Math.floor((elapsed / ESTIMATED_SCAN_TIME) * 100),
-              95 // cap before real response
-            );
-
-            setMessages((prev) =>
-              prev.map((msg) =>
-                msg.id === botMessage.id
-                  ? { ...msg, scanProgress: progress }
-                  : msg
-              )
-            );
-
-            await new Promise((r) => setTimeout(r, 300));
-          }
-        };
-        progressLoop();
-
-        try {
-          const inputUrl = extractUrlFromMessage(input);
-          // real API call
-          const response = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: token ? `Bearer ${token}` : "",
-            },
-            body: JSON.stringify({ url: inputUrl }),
-            signal,
-          });
-
-          if (!response.ok) throw new Error("Scan API error");
-
-          let result: any = null;
-          try {
-            result = await response.json();
-          } catch (err) {
-            console.error("Failed to parse scan JSON:", err);
-            result = { error: "Invalid scan response" };
-          }
-
-          console.log("Scan result (sendMessage):", result);
-
-          let newMessage: MessageType;
-          if (result.error) {
-            newMessage = {
-              ...botMessage,
-              isScanning: false,
-              scanProgress: 100,
-              scanResults: result.scanned_output || null,
-              type: "general",
-              content: result.error,
-            };
-          } else {
-            newMessage = {
-              ...botMessage,
-              isScanning: false,
-              scanProgress: 100,
-              scanResults: result.scanned_output,
-              type: "analyze",
-            };
-          }
-
-          // update with scan result
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMessage.id ? { ...newMessage } : msg
-            )
-          );
-        } finally {
-          finished = true; // ✅ ensure progress loop exits
-        }
-
-        return; // ✅ stop here for analyze
-      }
-
-      // ===================
-      // 💬 HANDLE GENERAL
-      // ===================
       setIsTyping(true);
 
       const response = await fetch(endpoint, {
@@ -637,36 +301,30 @@ export default function ChatPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ question: input }),
+        body: JSON.stringify({ 
+          question: input,
+          session_id: conversationId || "default"
+        }),
         signal,
       });
 
-      if (!response.body) throw new Error("ReadableStream not supported");
+      if (!response.ok) throw new Error("API error");
+      
+      const data = await response.json();
+      const content = data.answer || "";
+      const cleaned = content.replace("</think>", "");
+      botText = cleaned;
 
-      console.log("Response body:", response.body);
+      // mark rendering finished
+      setIsTyping(false);
+      setIsRendering(false);
 
-      await readStreamingJson(
-        response,
-        (parsed) => {
-          console.log("Streaming response:", parsed);
-          lastChunk = parsed;
-          const content = parsed.message?.content || "";
-          const cleaned = content.replace("</think>", "");
-          botText += cleaned;
-
-          // mark rendering only once streaming begins
-          setIsTyping(false);
-          setIsRendering(true);
-
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMessage.id
-                ? { ...msg, content: botText.trim() }
-                : msg
-            )
-          );
-        },
-        stopRef
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMessage.id
+            ? { ...msg, content: botText.trim() }
+            : msg
+        )
       );
     } catch (error: any) {
       console.error("Error sending message:", error?.message || error);
@@ -700,137 +358,6 @@ export default function ChatPage() {
 
     setIsTyping(false);
     setIsRendering(false);
-    setIsUrlScanning(false);
-  };
-
-  const handleUrlScan = async (url: string) => {
-    try {
-      const token = getToken();
-      const controller = new AbortController();
-      const { signal } = controller;
-
-      // ✅ Assign controller to stopRef so Stop button works
-      stopRef.current = () => {
-        controller.abort(); // stop fetch
-        finished = true; // stop progress loop
-        setIsUrlScanning(false); // reset state
-      };
-
-      // ✅ Decide endpoint based on whether conversation exists
-      let endpoint = "";
-      if (!conversationId) {
-        endpoint = `${API_URL}/analyze/new`;
-      } else {
-        endpoint = `${API_URL}/analyze/conversation/${conversationId}`;
-      }
-
-      // Initial scanning message
-      const botMessage: MessageType = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "",
-        datetime: new Date(),
-        isScanning: true,
-        scanProgress: 0,
-        type: "analyze",
-      };
-      setMessages((prev) => [...prev, botMessage]);
-
-      setIsUrlScanning(true);
-
-      // Progress loop simulation
-      let finished = false;
-      const startTime = Date.now();
-
-      const progressLoop = async () => {
-        const ESTIMATED_SCAN_TIME = 25000; // 25s baseline
-        while (!finished) {
-          const elapsed = Date.now() - startTime;
-          const progress = Math.min(
-            Math.floor((elapsed / ESTIMATED_SCAN_TIME) * 100),
-            95
-          );
-
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === botMessage.id
-                ? { ...msg, scanProgress: progress }
-                : msg
-            )
-          );
-
-          await new Promise((r) => setTimeout(r, 300));
-        }
-      };
-
-      progressLoop();
-
-      // === Fetch request ===
-      const inputUrl = extractUrlFromMessage(url);
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-        body: JSON.stringify({ url: inputUrl }),
-        signal,
-      });
-
-      finished = true;
-      setIsUrlScanning(false);
-
-      if (!response.ok) throw new Error("Scan API error");
-      const result = await response.json();
-
-      let newMessage: MessageType;
-      if (result.error) {
-        newMessage = {
-          ...botMessage,
-          isScanning: false,
-          scanProgress: 100,
-          content: result.error,
-          scanResults: result.scanned_output ? result.scanned_output : null,
-          type: "general",
-        };
-      } else {
-        newMessage = {
-          ...botMessage,
-          isScanning: false,
-          scanProgress: 100,
-          scanResults: result.scanned_output,
-          type: "analyze",
-        };
-      }
-
-      // Update scanning message
-      setMessages((prev) =>
-        prev.map((msg) => (msg.id === botMessage.id ? { ...newMessage } : msg))
-      );
-
-      // ✅ If it was a new conversation, save meta
-      if (!conversationId && result.conversation_id) {
-        setConversationId(result.conversation_id);
-        setSelectedChatId(result.conversation_id);
-        setChatHistory((prev) => [
-          {
-            user_id: user?.id || 0,
-            title: result.title || "New Scan",
-            id: result.conversation_id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          ...prev,
-        ]);
-      }
-    } catch (error: any) {
-      console.error("Error scanning URL:", error?.message || error);
-      setIsUrlScanning(false);
-    } finally {
-      // ✅ Cleanup stopRef when done
-      stopRef.current = false;
-      setIsUrlScanning(false);
-    }
   };
 
   //stop fetching tokens from text generation API
@@ -887,9 +414,9 @@ export default function ChatPage() {
 
   return (
     <SidebarProvider>
-      <div className="bg-gradient-to-b from-gray-900 to-gray-950 flex h-screen w-full">
+      <div className="bg-background flex h-screen w-full">
         {/* Modal for login */}
-        <Dialog
+        {/* <Dialog
           open={showLoginModal}
           onOpenChange={setShowLoginModal} // Prevent closing when clicking outside
         >
@@ -916,9 +443,9 @@ export default function ChatPage() {
               </Button>
             </DialogFooter>
           </DialogContent>
-        </Dialog>
+        </Dialog> */}
         {/* Side Panel */}
-        <SidePanel
+        {/* <SidePanel
           chatHistory={chatHistory}
           setChatHistory={setChatHistory}
           selectedChatId={selectedChatId}
@@ -926,7 +453,7 @@ export default function ChatPage() {
           newChat={newChat}
           setMessages={setMessages}
           isFetching={fetchingHistory}
-        />
+        /> */}
 
         <main className="flex flex-col w-full h-screen  relative">
           <ChatHeader
@@ -961,7 +488,7 @@ export default function ChatPage() {
             {!isUserAtBottom && (
               <button
                 onClick={() => scrollToBottom()}
-                className="fixed bottom-16 md:bottom-4 right-4 z-50 p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center animate-bounce"
+                className="fixed bottom-16 md:bottom-4 right-4 z-50 p-3 bg-primary hover:bg-primary/80 text-white rounded-full shadow-lg flex items-center justify-center animate-bounce"
               >
                 <ChevronDown size={24} />
               </button>
@@ -982,12 +509,6 @@ export default function ChatPage() {
             setShowSuggestions={setShowSuggestions}
             filterSuggestions={filterSuggestions}
             selectSuggestion={selectSuggestion}
-            urlToScan={urlToScan}
-            setUrlToScan={setUrlToScan}
-            isUrlScanning={isUrlScanning}
-            scanUrl={handleUrlScan}
-            showAnalysisModal={showAnalysisModal}
-            setShowAnalysisModal={setShowAnalysisModal}
             setMessages={setMessages}
           />
         </main>
