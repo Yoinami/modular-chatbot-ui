@@ -4,12 +4,13 @@ A sophisticated security awareness and threat analysis platform built with Next.
 
 ## 🚀 Features
 
-- **AI-Powered Security Chat:** Get answers to cybersecurity questions and real-time threat analysis.
+- **AI-Powered Security Chat:** The core interface (located at `/chat`) for cybersecurity questions and real-time threat analysis.
 - **Threat Analyzer:** Scan URLs and files for potential security risks.
 - **Interactive Learning:** Cybersecurity "Teach" mode and dynamic security quizzes.
 - **Incident Reporting:** Streamlined interface for reporting security incidents.
 - **Dashboard:** Track your security learning progress and scan history.
 - **V0 Powered UI:** Clean, modern interface built with Tailwind CSS and Radix UI.
+- **Direct Entry:** The root URL (`/`) automatically redirects to the Security Chat interface for immediate access.
 
 ## 🛠 Tech Stack
 
@@ -48,15 +49,13 @@ A sophisticated security awareness and threat analysis platform built with Next.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/hackaware.git
-   cd hackaware
+   git clone https://github.com/Yoinami/modular-chatbot-ui
+   cd modular-chatbot-ui
    ```
 
 2. Install dependencies:
    ```bash
-   pnpm install
-   # or
-   npm install
+   npm install --legacy-peer-deps
    ```
 
 3. Configure Environment Variables:
@@ -72,17 +71,27 @@ A sophisticated security awareness and threat analysis platform built with Next.
    npm run dev
    ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) (which redirects to `/chat`) with your browser to see the result.
 
 ## 🔌 Backend Integration
 
-This project is a frontend-only application that expects an external API for:
-- Authentication (`/users/login`, `/users/`)
-- Chat logic (`/chat/new`)
-- Threat analysis (`/analyze/new`)
-- Quiz generation (`/quiz/generate`)
+This project is a frontend application that expects these two endpoints from the backend:
 
-Ensure your backend server is running and accessible at the URL defined in `NEXT_PUBLIC_API_URL`.
+### `POST /query`
+The primary endpoint for asking questions and receiving AI-generated answers.
+- **Description:** Performs RAG (retrieval + generation) and maintains session memory.
+- **Request Body:**
+  - `question` (string): The user's question.
+  - `session_id` (string, optional): ID to maintain conversation history (default: "default").
+  - `dataset_id` (string, optional): Filter search to a specific ingested dataset.
+  - `enable_tts` (boolean, optional): Set to `true` to get a TTS audio link/base64 in the response.
+  - `top_k` (integer, optional): Number of documents to use for context.
+
+### `GET /session/{session_id}/memory`
+Retrieves the conversation history for a specific session.
+- **Description:** Returns all previous turns (questions and answers) stored for the session.
+
+Ensure your backend server is running and accessible at the URL defined in the `NEXT_PUBLIC_API_URL` environment variable.
 
 ## 📄 License
 
